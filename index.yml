@@ -1,0 +1,358 @@
+
+AWSTemplateFormatVersion: 2010-09-09
+Description: Resa / This template deploys the UDAGRAM Server setup
+Parameters:
+        EnvironmentName:
+            Description: An environment name that will be prefixed to resource names
+            Type: String
+        
+        Vpc:
+            Description: Please enter the IP range (CIDR notation) for this VPC
+            Type: String
+            Default: 10.0.0.0/16
+
+        PublicSubnet:
+            Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
+            Type: String
+            Default: 10.0.0.0/24
+
+        PrivateSubnetOne:
+            Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
+            Type: String
+            Default: 10.0.2.0/24
+
+        PrivateSubnetTwo:
+            Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
+            Type: String
+            Default: 10.0.3.0/24
+
+        AMItoUse:
+            Description: AMI to use for our base image
+            Type: String
+
+Resources:
+        
+        VPC:
+            Type: AWS::EC2::VPC
+            Properties:
+                CidrBlock: !Ref VpcCIDR
+                EnableDnsHostnames: true
+                Tags: 
+                    - Key: Name 
+                      Value: !Ref EnvironmentName
+        
+        InternetGateway:
+            Type: AWS::EC2::InternetGateway
+            Properties:
+                Tags:
+                    - Key: Name
+                      Value: !Ref EnvironmentName
+        
+        PublicSubnet:
+            Type: AWS::EC2::Subnet
+            Properties:
+                VpcId: !Ref Vpc
+                AvailabilityZone: !Select [ 0, !GetAZs '' ]
+                CidrBlock: !Ref PublicSubnetCIDR
+                MapPublicIpOnLaunch: true
+                Tags:
+                  - Key: Name 
+                    Value: !Sub ${EnvironmentName} Public Subnet (AZ1)
+        
+        InternetGatewayAttachment:
+            Type: AWS::EC2::VPCGatewayAttachment
+            Properties:
+                InternetGatewayId: !Ref InternetGateway
+                VpcId: !Ref VPC
+        
+        NatGatewayEIP:
+            Type: AWS::EC2::EIP 
+            DependsOn: InternetGatewayAttachment
+            Properties: 
+                Domain: vpc
+        
+        NatGateway: 
+            Type: AWS::EC2::NatGateway
+            Properties: 
+                AllocationId: !GetAtt NatGatewayEIP.AllocationId
+                SubnetId: !Ref PublicSubnet
+        
+        LoadBalancerSecurityGroup:
+            Type: AWS::EC2::SecurityGroup
+            Properties:
+                GroupDescription: Allow http traffic to our load balancer
+                VpcId: !Ref VPC
+                SecurityGroupIngress:
+                - IpProtocol: tcp
+                FromPort: 80
+                ToPort: 80
+                CidrIp: 0.0.0.0/0
+                
+                SecurityGroupEgress:
+                - IpProtocol: tcp
+                FromPort: 80
+                ToPort: 80
+                CidrIp: 0.0.0.0/0
+
+        AppSecurityGroup:
+            Type: AWS::EC2::SecurityGroup
+            Properties:
+                GroupDescription: Allow http traffic to our load balancer
+                VpcId: !Ref VPC
+                SecurityGroupIngress:
+                - IpProtocol: tcp
+                FromPort: 80
+                ToPort: 80
+                CidrIp: 0.0.0.0/0
+                
+                SecurityGroupEgress:
+                - IpProtocol: tcp
+                FromPort: -1
+                ToPort: -1
+                CidrIp: 0.0.0.0/0
+
+        PrivateSubnetOne:
+            Type: AWS::EC2::Subnet
+            Properties:
+                VpcId: !Ref VPC
+                AvailabilityZone: !Select [ 0, !GetAZs '' ]
+                CidrBlock: !Ref PrivateSubnetOneCIDR
+                MapPublicIpOnLaunch: false
+                Tags:
+                  - Key: Name 
+                    Value: !Sub ${EnvironmentName} Private Subnet (AZ1)
+        
+        PrivateSubnetTwo:
+            Type: AWS::EC2::Subnet
+            Properties:
+                VpcId: !Ref VPC
+                AvailabilityZone: !Select [1, !GetAZs '']
+                CidrBlock: !Ref PrivateSubnetTwoCIDR
+                MapPublicIpOnLaunch: false
+                Tags:
+                    - Key: Name
+                      Value: !Sub ${EnvironmentName} Private Subnet (AZ2)
+
+        AccessS3Role:
+            Type: AWS::IAM::Role
+            Properties:
+                RoleName: access-s3-role 
+                Description: "Role to allow instances access to s3"
+                AssumeRolePolicyDocument:
+                    Version: '2012-10-17'
+                    Statement:
+                        - Effect: Allow
+                            Principal:
+                                Service:
+                                    - ec2.amazonaws.com
+                            Action:
+                                - 'sts:AssumeRole'
+                ManagedPolicyArns:
+                  - arn:aws:iam::aws:policy/AmazonS3FullAccess
+
+        AccessInstanceProfile: 
+            Type: AWS::IAM::InstanceProfile
+            Properties: 
+                InstanceProfileName: instanceProfileOne
+                Roles: 
+                    - !Ref AccessS3Role
+                Path: '/'
+        
+        ServerOne:
+            Type: AWS::EC2::Instance
+            Properties:
+                ImageId: !Ref AMItoUse
+                InstanceType: t3.medium
+                IamInstanceProfile: !Ref AccessInstanceProfile
+                NetworkInterfaces: 
+                    - AssociatePublicIpAddress: "false"
+                    DeviceIndex: "0"
+                    GroupSet: 
+                        - Ref: "AppSecurityGroup"
+                    SubnetId: 
+                        Ref: "PrivateSubnetOne"
+                UserData: 
+                    Fn::Base64: !Sub |
+                        #!/bin/bash
+                        sudo yum update -y
+                        sudo yum install -y httpd
+                        sudo systemctl start httpd
+                        sudo systemctl enable httpd
+
+        ServerTwo:
+            Type: AWS::EC2::Instance
+            Properties:
+                ImageId: !Ref AMItoUse
+                InstanceType: t3.medium
+                IamInstanceProfile: !Ref AccessInstanceProfile
+                NetworkInterfaces: 
+                    - AssociatePublicIpAddress: "false"
+                    DeviceIndex: "0"
+                    GroupSet: 
+                        - Ref: "AppSecurityGroup"
+                    SubnetId: 
+                        Ref: "PrivateSubnetOne"
+                UserData: 
+                    Fn::Base64: !Sub |
+                        #!/bin/bash
+                        sudo yum update -y
+                        sudo yum install -y httpd
+                        sudo systemctl start httpd
+                        sudo systemctl enable httpd
+        
+        ServerThree:
+            Type: AWS::EC2::Instance
+            Properties:
+                ImageId: !Ref AMItoUse
+                InstanceType: t3.medium
+                IamInstanceProfile: !Ref AccessInstanceProfile
+                NetworkInterfaces: 
+                    - AssociatePublicIpAddress: "false"
+                    DeviceIndex: "0"
+                    GroupSet: 
+                        - Ref: "AppSecurityGroup"
+                    SubnetId: 
+                        Ref: "PrivateSubnetTwo"
+                UserData: 
+                    Fn::Base64: !Sub |
+                        #!/bin/bash
+                        sudo yum update -y
+                        sudo yum install -y httpd
+                        sudo systemctl start httpd
+                        sudo systemctl enable httpd
+
+        ServerFour:
+            Type: AWS::EC2::Instance
+            Properties:
+                ImageId: !Ref AMItoUse
+                InstanceType: t3.medium
+                IamInstanceProfile: !Ref AccessInstanceProfile
+                NetworkInterfaces: 
+                    - AssociatePublicIpAddress: "false"
+                    DeviceIndex: "0"
+                    GroupSet: 
+                        - Ref: "AppSecurityGroup"
+                    SubnetId: 
+                        Ref: "PrivateSubnetTwo"
+                UserData: 
+                    Fn::Base64: !Sub |
+                        #!/bin/bash
+                        sudo yum update -y
+                        sudo yum install -y httpd
+                        sudo systemctl start httpd
+                        sudo systemctl enable httpd
+
+        LaunchConfigurationUD:
+                Type: AWS::AutoScaling::LaunchConfiguration
+                Properties:
+                UserData: # install and start the apache server on a linux/ubuntu machine
+                    Fn::Base64: !Sub |
+                        #!/bin/bash
+                        apt-get update -y
+                        apt-get install apache2 -y
+                        systemctl start apache2.service
+                        cd /var/www/html
+                        echo "it works! Udagram, Udacity" > index.html
+                ImageId: !Ref AMItoUse #id of the machine you want to run, Ubuntu-18
+                SecurityGroups:
+                - Ref: AppSecurityGroup # security group
+                InstanceType: t3.medium
+                BlockDeviceMappings:
+                - DeviceName: "/dev/sdk"
+                    Ebs:
+                    VolumeSize: '10' # 10gb disk
+        
+        ApplicationLoadBalancer:
+            Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+            Properties:
+                Subnets:
+                - !Ref PrivateSubnetOne
+                - !Ref PrivateSubnetTwo
+                SecurityGroups:
+                - Ref: LoadBalancerSecurityGroup
+
+        Listener:
+            Type: AWS::ElasticLoadBalancingV2::Listener
+            Properties:
+                DefaultActions:
+                - Type: forward
+                TargetGroupArn:
+                    Ref: AppTargetGroup
+                LoadBalancerArn:
+                    Ref: ApplicationLoadBalancer
+                Port: '80'
+                Protocol: HTTP
+
+        ALBListenerRule:
+            Type: AWS::ElasticLoadBalancingV2::ListenerRule
+            Properties:
+                Actions:
+                - Type: forward
+                TargetGroupArn: !Ref 'AppTargetGroup'
+                Conditions:
+                - Field: path-pattern
+                Values: [/]
+                ListenerArn: !Ref 'Listener'
+                Priority: 1
+            
+        AppTargetGroup:
+            Type: AWS::ElasticLoadBalancingV2::TargetGroup
+            Properties:
+                HealthCheckIntervalSeconds: 10
+                HealthCheckPath: /
+                HealthCheckProtocol: HTTP
+                HealthCheckTimeoutSeconds: 8
+                HealthyThresholdCount: 2
+                Port: 8080
+                Protocol: HTTP
+                UnhealthyThresholdCount: 5
+                VpcId: 
+                    !Ref VPC
+
+        AppAutoScalingGroup:
+            Type: AWS::AutoScaling::AutoScalingGroup
+            Properties:
+                VPCZoneIdentifier:
+                - Ref: PrivateSubnetOne
+                - Ref: PrivateSubnetTwo
+                LaunchConfigurationName:
+                    Ref: LaunchConfigurationUD
+                MinSize: '2'
+                MaxSize: '4'
+                TargetGroupARNs:
+                - Ref: AppTargetGroup
+
+        
+
+Outputs: 
+
+        VPC: 
+            Description: A reference to the created VPC
+            Value: !Ref VPC
+            Export:
+              Name: !Sub ${EnvironmentName}-VPCID
+
+        PublicSubnet:
+            Description: A reference to the public subnet
+            Value: !Ref PublicSubnet
+            Export:
+              Name: !Sub ${EnvironmentName}-PUB1-SN
+
+        PrivateSubnet1:
+            Description: A reference to the first private subnet
+            Value: !Ref PrivateSubnetOne
+            Export:
+              Name: !Sub ${EnvironmentName}-PRI1-SN
+
+        PrivateSubnet2:
+            Description: A reference to the second private subnet
+            Value: !Ref PrivateSubnetTwo
+            Export:
+              Name: !Sub ${EnvironmentName}-PRI2-SN
+
+        LoadBalancerURL:
+            Description: A reference to the loadbalancer URL
+            Value: 
+              Fn::Join: [ "", [ "http://", !GetAtt ApplicationLoadBalancer.DNSName  ] ]
+            Export:
+              Name: !Sub ${EnvironmentName}-LB
