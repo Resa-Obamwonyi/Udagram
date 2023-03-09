@@ -1,3 +1,4 @@
+# aws cloudformation create-stack --stack-name udagram-stack --template-body file://index.yml --parameters file://params.json --region=us-east-1 --profile udacity1 --capabilities "CAPABILITY_IAM" "CAPABILITY_NAMED_IAM"
 
 AWSTemplateFormatVersion: 2010-09-09
 Description: Resa / This template deploys the UDAGRAM Server setup
@@ -6,22 +7,22 @@ Parameters:
             Description: An environment name that will be prefixed to resource names
             Type: String
         
-        Vpc:
+        VpcCIDR:
             Description: Please enter the IP range (CIDR notation) for this VPC
             Type: String
             Default: 10.0.0.0/16
 
-        PublicSubnet:
+        PublicSubnetCIDR:
             Description: Please enter the IP range (CIDR notation) for the public subnet in the first Availability Zone
             Type: String
             Default: 10.0.0.0/24
 
-        PrivateSubnetOne:
+        PrivateSubnetOneCIDR:
             Description: Please enter the IP range (CIDR notation) for the private subnet in the first Availability Zone
             Type: String
             Default: 10.0.2.0/24
 
-        PrivateSubnetTwo:
+        PrivateSubnetTwoCIDR:
             Description: Please enter the IP range (CIDR notation) for the private subnet in the second Availability Zone
             Type: String
             Default: 10.0.3.0/24
@@ -51,7 +52,7 @@ Resources:
         PublicSubnet:
             Type: AWS::EC2::Subnet
             Properties:
-                VpcId: !Ref Vpc
+                VpcId: !Ref VPC
                 AvailabilityZone: !Select [ 0, !GetAZs '' ]
                 CidrBlock: !Ref PublicSubnetCIDR
                 MapPublicIpOnLaunch: true
@@ -84,15 +85,15 @@ Resources:
                 VpcId: !Ref VPC
                 SecurityGroupIngress:
                 - IpProtocol: tcp
-                FromPort: 80
-                ToPort: 80
-                CidrIp: 0.0.0.0/0
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
                 
                 SecurityGroupEgress:
                 - IpProtocol: tcp
-                FromPort: 80
-                ToPort: 80
-                CidrIp: 0.0.0.0/0
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
 
         AppSecurityGroup:
             Type: AWS::EC2::SecurityGroup
@@ -101,15 +102,15 @@ Resources:
                 VpcId: !Ref VPC
                 SecurityGroupIngress:
                 - IpProtocol: tcp
-                FromPort: 80
-                ToPort: 80
-                CidrIp: 0.0.0.0/0
+                  FromPort: 80
+                  ToPort: 80
+                  CidrIp: 0.0.0.0/0
                 
                 SecurityGroupEgress:
                 - IpProtocol: tcp
-                FromPort: -1
-                ToPort: -1
-                CidrIp: 0.0.0.0/0
+                  FromPort: 0
+                  ToPort: 65535
+                  CidrIp: 0.0.0.0/0
 
         PrivateSubnetOne:
             Type: AWS::EC2::Subnet
@@ -142,11 +143,11 @@ Resources:
                     Version: '2012-10-17'
                     Statement:
                         - Effect: Allow
-                            Principal:
-                                Service:
-                                    - ec2.amazonaws.com
-                            Action:
-                                - 'sts:AssumeRole'
+                          Principal:
+                              Service:
+                                - ec2.amazonaws.com
+                          Action:
+                            - 'sts:AssumeRole'
                 ManagedPolicyArns:
                   - arn:aws:iam::aws:policy/AmazonS3FullAccess
 
@@ -166,10 +167,10 @@ Resources:
                 IamInstanceProfile: !Ref AccessInstanceProfile
                 NetworkInterfaces: 
                     - AssociatePublicIpAddress: "false"
-                    DeviceIndex: "0"
-                    GroupSet: 
+                      DeviceIndex: "0"
+                      GroupSet: 
                         - Ref: "AppSecurityGroup"
-                    SubnetId: 
+                      SubnetId: 
                         Ref: "PrivateSubnetOne"
                 UserData: 
                     Fn::Base64: !Sub |
@@ -187,10 +188,10 @@ Resources:
                 IamInstanceProfile: !Ref AccessInstanceProfile
                 NetworkInterfaces: 
                     - AssociatePublicIpAddress: "false"
-                    DeviceIndex: "0"
-                    GroupSet: 
+                      DeviceIndex: "0"
+                      GroupSet: 
                         - Ref: "AppSecurityGroup"
-                    SubnetId: 
+                      SubnetId: 
                         Ref: "PrivateSubnetOne"
                 UserData: 
                     Fn::Base64: !Sub |
@@ -208,10 +209,10 @@ Resources:
                 IamInstanceProfile: !Ref AccessInstanceProfile
                 NetworkInterfaces: 
                     - AssociatePublicIpAddress: "false"
-                    DeviceIndex: "0"
-                    GroupSet: 
+                      DeviceIndex: "0"
+                      GroupSet: 
                         - Ref: "AppSecurityGroup"
-                    SubnetId: 
+                      SubnetId: 
                         Ref: "PrivateSubnetTwo"
                 UserData: 
                     Fn::Base64: !Sub |
@@ -229,10 +230,10 @@ Resources:
                 IamInstanceProfile: !Ref AccessInstanceProfile
                 NetworkInterfaces: 
                     - AssociatePublicIpAddress: "false"
-                    DeviceIndex: "0"
-                    GroupSet: 
+                      DeviceIndex: "0"
+                      GroupSet: 
                         - Ref: "AppSecurityGroup"
-                    SubnetId: 
+                      SubnetId: 
                         Ref: "PrivateSubnetTwo"
                 UserData: 
                     Fn::Base64: !Sub |
@@ -245,23 +246,23 @@ Resources:
         LaunchConfigurationUD:
                 Type: AWS::AutoScaling::LaunchConfiguration
                 Properties:
-                UserData: # install and start the apache server on a linux/ubuntu machine
-                    Fn::Base64: !Sub |
-                        #!/bin/bash
-                        apt-get update -y
-                        apt-get install apache2 -y
-                        systemctl start apache2.service
-                        cd /var/www/html
-                        echo "it works! Udagram, Udacity" > index.html
-                ImageId: !Ref AMItoUse #id of the machine you want to run, Ubuntu-18
-                SecurityGroups:
-                - Ref: AppSecurityGroup # security group
-                InstanceType: t3.medium
-                BlockDeviceMappings:
-                - DeviceName: "/dev/sdk"
-                    Ebs:
-                    VolumeSize: '10' # 10gb disk
-        
+                    UserData: # install and start the apache server on a linux/ubuntu machine
+                        Fn::Base64: !Sub |
+                            #!/bin/bash
+                            apt-get update -y
+                            apt-get install apache2 -y
+                            systemctl start apache2.service
+                            cd /var/www/html
+                            echo "it works! Udagram, Udacity" > index.html
+                    ImageId: !Ref AMItoUse #id of the machine you want to run, Ubuntu-18
+                    SecurityGroups:
+                    - Ref: AppSecurityGroup # security group
+                    InstanceType: t3.medium
+                    BlockDeviceMappings:
+                    - DeviceName: "/dev/sdk"
+                      Ebs:
+                        VolumeSize: '10' # 10gb disk
+            
         ApplicationLoadBalancer:
             Type: AWS::ElasticLoadBalancingV2::LoadBalancer
             Properties:
@@ -276,8 +277,7 @@ Resources:
             Properties:
                 DefaultActions:
                 - Type: forward
-                TargetGroupArn:
-                    Ref: AppTargetGroup
+                  TargetGroupArn: !Ref AppTargetGroup
                 LoadBalancerArn:
                     Ref: ApplicationLoadBalancer
                 Port: '80'
@@ -288,10 +288,10 @@ Resources:
             Properties:
                 Actions:
                 - Type: forward
-                TargetGroupArn: !Ref 'AppTargetGroup'
+                  TargetGroupArn: !Ref AppTargetGroup
                 Conditions:
                 - Field: path-pattern
-                Values: [/]
+                  Values: [/]
                 ListenerArn: !Ref 'Listener'
                 Priority: 1
             
