@@ -321,7 +321,6 @@ Resources:
                 MaxSize: '4'
                 TargetGroupARNs:
                 - Ref: AppTargetGroup
-
         
 
 Outputs: 
