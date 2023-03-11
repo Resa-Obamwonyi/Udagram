@@ -8,8 +8,12 @@
 		"ParameterValue": "10.0.0.0/16"
 	},
 	{
-		"ParameterKey": "PublicSubnetCIDR",
+		"ParameterKey": "PublicSubnetOneCIDR",
 		"ParameterValue": "10.0.0.0/24"
+	},
+	{
+		"ParameterKey": "PublicSubnetTwoCIDR",
+		"ParameterValue": "10.0.1.0/24"
 	},
 	{
 		"ParameterKey": "PrivateSubnetOneCIDR",
@@ -21,6 +25,6 @@
 	},
     {
         "ParameterKey": "AMItoUse",
-        "ParameterValue": "ami-0dfcb1ef8550277af"
+        "ParameterValue": "ami-09cd747c78a9add63"
       }
 ]
